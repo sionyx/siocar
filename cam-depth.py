@@ -21,7 +21,7 @@ import time
     # np.savez_compressed('depth_image_{}.npz'.format(ts), depth_image)
 
 
-def detect(color_image, depth_image, plane):
+def detect(color_image, depth_image):#, plane):
 
     # Переводим из милиметров в метры
     normalized_depth = np.multiply(depth_image, 0.001)
@@ -76,8 +76,8 @@ def detect(color_image, depth_image, plane):
 
 
 def realcam():
-    plane_file = np.load('plane.npz')
-    plane = plane_file['plane']
+    #plane_file = np.load('plane.npz')
+    #plane = plane_file['plane']
 
     try:
         # Create a context object. This object owns the handles to all connected realsense devices
@@ -106,9 +106,9 @@ def realcam():
             depth_image = np.asanyarray(depth.get_data())
             color_image = np.asanyarray(color.get_data())
 
-            ts = time.time().asInt()
-            if ts % 15 == 0 and last_ts + 15 < ts:
-                last_ts = ts
+            #ts = time.time().asInt()
+            #if ts % 15 == 0 and last_ts + 15 < ts:
+            #    last_ts = ts
 
                 # np.savez_compressed('depth_image_{}.npz'.format(ts), depth_image)
                 # cv2.imwrite('color_image_{}.png'.format(ts), color_image)
@@ -117,7 +117,7 @@ def realcam():
             distance = depth * depth_scale
             print("Distance (m): ", distance)
 
-            detect(color_image, depth_image, plane)
+            detect(color_image, depth_image) #, plane)
 
     except Exception as e:
         print(e)
