@@ -21,7 +21,7 @@ import time
     # np.savez_compressed('depth_image_{}.npz'.format(ts), depth_image)
 
 
-def detect(color_image, depth_image):#, plane):
+def detect(color_image, depth_image, depth_scale):#, plane):
 
     # Переводим из милиметров в метры
     normalized_depth = np.multiply(depth_image, 0.001)
@@ -67,7 +67,23 @@ def detect(color_image, depth_image):#, plane):
     #     cv2.drawContours(color_image, [approx], -1, (0, 0, 255), 1)
 
     # Stack both images horizontally
-    images = np.hstack((color_image, depth_colormap))
+    #images = np.hstack((color_image, depth_colormap))
+
+    gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
+    backtorgb = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    images = cv2.addWeighted(backtorgb, 0.5, depth_colormap, 0.5, 0)
+
+    depth1 = depth_image[320, 240].astype(float)
+    depth2 = depth_image[310, 240].astype(float)
+    depth3 = depth_image[330, 240].astype(float)
+    depth4 = depth_image[320, 250].astype(float)
+    depth5 = depth_image[320, 230].astype(float)
+    depth = (depth1 + depth2 + depth3 + depth4 + depth5) / 5
+    distance = depth * depth_scale
+    print("Distance (m): ", distance)
+
+    cv2.putText(images, "{}".format(distance), (0, 50), 0, 2, 255)
+    cv2.rectangle(images, (310, 230), (330, 250), (255, 0, 0), 2)
 
     # Show images
     cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
@@ -113,11 +129,8 @@ def realcam():
                 # np.savez_compressed('depth_image_{}.npz'.format(ts), depth_image)
                 # cv2.imwrite('color_image_{}.png'.format(ts), color_image)
 
-            depth = depth_image[320, 240].astype(float)
-            distance = depth * depth_scale
-            print("Distance (m): ", distance)
 
-            detect(color_image, depth_image) #, plane)
+            detect(color_image, depth_image, depth_scale) #, plane)
 
     except Exception as e:
         print(e)
@@ -132,7 +145,7 @@ def simulate(color_filename, depth_filename):
     data = np.load('{}.npz'.format(depth_filename))
     depth_image = data['arr_0']
 
-    detect(color_image, depth_image, plane)
+    detect(color_image, depth_image, 0.001)#, plane)
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
