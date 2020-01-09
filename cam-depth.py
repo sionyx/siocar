@@ -12,6 +12,7 @@ import cv2
 import imutils
 import time
 
+net = cv2.dnn.readNetFromCaffe('deploy.prototxt', 'deploy.caffemodel')
 
 #def normalize_plane()
 
@@ -21,12 +22,71 @@ import time
     # np.savez_compressed('depth_image_{}.npz'.format(ts), depth_image)
 
 
+
+def main_rect(frame):
+    inWidth = 640
+    inHeight = 480
+    WHRatio = inWidth / float(inHeight)
+    inScaleFactor = 0.007843
+    meanVal = 127.5
+    thr = 0.2
+
+    blob = cv2.dnn.blobFromImage(frame, inScaleFactor, (inWidth, inHeight), (meanVal, meanVal, meanVal), False)
+    net.setInput(blob)
+    detections = net.forward()
+
+    cols = frame.shape[1]
+    rows = frame.shape[0]
+
+    if cols / float(rows) > WHRatio:
+        cropSize = (int(rows * WHRatio), rows)
+    else:
+        cropSize = (cols, int(cols / WHRatio))
+
+    y1 = int((rows - cropSize[1]) / 2)
+    y2 = y1 + cropSize[1]
+    x1 = int((cols - cropSize[0]) / 2)
+    x2 = x1 + cropSize[0]
+    frame = frame[y1:y2, x1:x2]
+
+    cols = frame.shape[1]
+    rows = frame.shape[0]
+    center = cols / 2, rows / 2
+
+    main_rect = ((0, 0), (0, 0))
+    min_dist = 10000
+
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        class_id = int(detections[0, 0, i, 1])
+        if confidence > thr and class_id == 7:
+
+            xLeftBottom = int(detections[0, 0, i, 3] * cols)
+            yLeftBottom = int(detections[0, 0, i, 4] * rows)
+            xRightTop = int(detections[0, 0, i, 5] * cols)
+            yRightTop = int(detections[0, 0, i, 6] * rows)
+
+            obj_rect = ((xLeftBottom, yLeftBottom), (xRightTop, yRightTop))
+
+            # cv.rectangle(frame, obj_rect[0], obj_rect[1], (0, 255, 0))
+
+            obj_center = (xRightTop + xLeftBottom) / 2, (yRightTop + yLeftBottom) / 2
+
+            dist = np.sqrt((center[0] - obj_center[0]) ** 2 + (center[1] - obj_center[1]) ** 2)
+
+            if dist < min_dist:
+                min_dist = dist
+                main_rect = obj_rect
+
+    #return ((main_rect[0][0] + x1, main_rect[0][1] + y1), (main_rect[1][0] + x1, main_rect[1][1] + y1))
+    return main_rect
+
 def detect(color_image, depth_image, depth_scale):#, plane):
 
     # Переводим из милиметров в метры
     normalized_depth = np.multiply(depth_image, 0.001)
     # Больше 10 метров - зануляем
-    normalized_depth[normalized_depth > 25] = 0
+    normalized_depth[normalized_depth > 50] = 0
     # Меньше метра - зануляем
     normalized_depth[normalized_depth < 1] = 0
 
@@ -46,7 +106,7 @@ def detect(color_image, depth_image, depth_scale):#, plane):
     # scale = 2.56 / max
 
 
-    depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(normalized_depth, alpha=10, beta=0), cv2.COLORMAP_HOT)
+    depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(normalized_depth, alpha=5, beta=0), cv2.COLORMAP_HOT)
     # depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.01, beta=0), cv2.COLORMAP_HOT)
 
     gray = cv2.cvtColor(depth_colormap, cv2.COLOR_BGR2GRAY)  # convert to grey scale
@@ -69,21 +129,40 @@ def detect(color_image, depth_image, depth_scale):#, plane):
     # Stack both images horizontally
     #images = np.hstack((color_image, depth_colormap))
 
+
     gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
     backtorgb = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
     images = cv2.addWeighted(backtorgb, 0.5, depth_colormap, 0.5, 0)
 
-    depth1 = depth_image[320, 240].astype(float)
-    depth2 = depth_image[310, 240].astype(float)
-    depth3 = depth_image[330, 240].astype(float)
-    depth4 = depth_image[320, 250].astype(float)
-    depth5 = depth_image[320, 230].astype(float)
-    depth = (depth1 + depth2 + depth3 + depth4 + depth5) / 5
-    distance = depth * depth_scale
-    print("Distance (m): ", distance)
+    car_rect = main_rect(color_image)
+    cv2.rectangle(images, car_rect[0], car_rect[1], (0, 255, 0), 2)
 
-    cv2.putText(images, "{}".format(distance), (0, 50), 0, 2, 255)
-    cv2.rectangle(images, (310, 230), (330, 250), (255, 0, 0), 2)
+
+    car_center_x = int((car_rect[0][0] + car_rect[1][0]) / 2)
+    car_center_y = int((car_rect[0][1] + car_rect[1][1]) / 2)
+
+    if car_center_x > 0 and car_center_y > 0:
+        d = 5
+        # depth1 = depth_image[car_center_x, car_center_y].astype(float)
+        # depth2 = depth_image[car_center_x - d, car_center_y].astype(float)
+        # depth3 = depth_image[car_center_x + d, car_center_y].astype(float)
+        # depth4 = depth_image[car_center_x, car_center_y + d].astype(float)
+        # depth5 = depth_image[car_center_x, car_center_y + d].astype(float)
+        # depth_arr = [depth1, depth2, depth3, depth4, depth5]
+        # depth_non_zero = max(depth_arr)
+        depth_arr = normalized_depth[car_center_x - d:car_center_x + 1, car_center_y - d: car_center_y + d]
+        depth_non_zero = depth_arr[np.nonzero(depth_arr)]
+
+        # depth = (depth1 + depth2 + depth3 + depth4 + depth5) / 5
+        if depth_non_zero.size > 0:
+            depth_max = np.median(depth_non_zero)
+            distance = depth_max #* depth_scale
+            print("Distance (m): ", distance)
+
+            cv2.putText(images, "{}".format(distance), (0, 50), 0, 2, 255)
+
+        cv2.rectangle(images, (car_center_x - d, car_center_y - d), (car_center_x + d, car_center_y + d), (255, 0, 0), 2)
+
 
     # Show images
     cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
@@ -102,6 +181,8 @@ def realcam():
         config = rs.config()
         config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        # config.enable_stream(rs.stream.depth, 1280, 960, rs.format.z16, 10)
+        # config.enable_stream(rs.stream.color, 1280, 960, rs.format.bgr8, 10)
 
         profile = pipeline.start(config)
 
